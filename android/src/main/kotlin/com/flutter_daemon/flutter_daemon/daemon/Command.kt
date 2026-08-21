@@ -71,12 +71,19 @@ internal object Command {
         val binaryDir = pickAbi()
         val assetfilename = "$binaryDir/$filename"
         return try {
-            val f = File(context.getDir(destDir, Context.MODE_PRIVATE), filename)
-            if (f.exists()) {
-                Log.d(TAG, "binary has existed")
+            val dir = context.getDir(destDir, Context.MODE_PRIVATE)
+            val target = File(dir, filename)
+            // 始终用临时文件 + 原子 rename 覆盖目标，保证 assets 里的新二进制能更新到私有目录。
+            // 之前「已存在即跳过」会导致重新编译后仍跑旧二进制（如间隔仍为旧版 120s）。
+            // 用 rename 而非直接覆盖写入：rename 不写文件内容，可安全替换正被 daemon 进程
+            // exec 的旧二进制（避免 ETXTBSY）；旧 inode 由内核持有至运行中的 daemon 退出，
+            // 下次 exec 该路径即用新文件。
+            val tmp = File(dir, "$filename.tmp")
+            copyAssets(context, assetfilename, tmp, "0755")
+            if (!tmp.renameTo(target) && !(target.delete() && tmp.renameTo(target))) {
+                Log.e(TAG, "rename $tmp -> $target failed")
                 return false
             }
-            copyAssets(context, assetfilename, f, "0755")
             true
         } catch (e: Exception) {
             Log.e(TAG, "installBinary failed: ${e.message}")

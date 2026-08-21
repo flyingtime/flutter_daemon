@@ -27,10 +27,10 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _start() async {
-    final ok = await FlutterDaemon.start(intervalSeconds: 120);
+    final ok = await FlutterDaemon.start(intervalSeconds: 3);
     setState(() {
       _running = ok;
-      _status = ok ? '已启动保活（间隔 120s）' : '启动失败';
+      _status = ok ? '已启动保活（间隔 3s）' : '启动失败';
     });
   }
 

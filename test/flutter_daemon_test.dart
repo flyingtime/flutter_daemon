@@ -13,7 +13,7 @@ class MockFlutterDaemonPlatform
   bool isRunningCalled = false;
 
   @override
-  Future<bool> start({int intervalSeconds = 120}) async {
+  Future<bool> start({int intervalSeconds = 3}) async {
     startCalled = true;
     lastInterval = intervalSeconds;
     return true;

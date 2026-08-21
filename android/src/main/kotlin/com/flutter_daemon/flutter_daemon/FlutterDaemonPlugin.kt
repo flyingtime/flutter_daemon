@@ -34,9 +34,9 @@ class FlutterDaemonPlugin : FlutterPlugin, MethodCallHandler {
         }
         when (call.method) {
             "start" -> {
-                val interval = (call.argument<Int>("intervalSeconds") ?: 120)
+                val interval = (call.argument<Int>("intervalSeconds") ?: 3)
                 // 与原版 InformationCore_Flutter 一致：先直接 startService 把 :daemon
-                // Service 拉起，保证保活即时生效，不必等到 native daemon 的首个 120s 周期。
+                // Service 拉起，保证保活即时生效，不必等到 native daemon 的首个 3s 周期。
                 startDaemonService(context)
                 // 再 fork native daemon 子进程做周期性兜底拉起。
                 Daemon.run(context, interval)
@@ -64,7 +64,7 @@ class FlutterDaemonPlugin : FlutterPlugin, MethodCallHandler {
      *
      * 与原版 InformationCore_Flutter/app 的 `startService(new Intent(this, DaemonService.class))`
      * 行为一致：保证调用 start() 后 :daemon Service 立即就绪，不必等 native daemon 的首个
-     * `interval`（默认 120s）周期。Service 起来后会在 [DaemonService.onCreate] 里再次
+     * `interval`（默认 3s）周期。Service 起来后会在 [DaemonService.onCreate] 里再次
      * 启动 native daemon，形成"Service ↔ daemon"双向互拉。
      *
      * 注意：API 26+ 禁止后台应用直接 startService，故在后台调用时降级为只依赖 native daemon

@@ -22,8 +22,7 @@ abstract class FlutterDaemonPlatform extends PlatformInterface {
   /// 启动保活守护进程。
   ///
   /// [intervalSeconds] 为 daemon 周期性检查并拉起 Service/应用的间隔秒数，
-  /// daemon.c 内置下限为 120 秒，传入小于 120 的值会被自动提升到 120。
-  Future<bool> start({int intervalSeconds = 120}) {
+  Future<bool> start({int intervalSeconds = 3}) {
     throw UnimplementedError('start() has not been implemented.');
   }
 

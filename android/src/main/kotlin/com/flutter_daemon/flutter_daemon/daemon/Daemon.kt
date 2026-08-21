@@ -22,8 +22,7 @@ internal object Daemon {
     private const val BIN_DIR_NAME = "bin"
     private const val DAEMON_BIN_NAME = "daemon"
 
-    const val INTERVAL_ONE_MINUTE = 60
-    const val INTERVAL_ONE_HOUR = 3600
+    const val INTERVAL_DELAY = 3
 
     /** 启动 daemon 二进制，参数：包名、daemon service 类、检查间隔秒数。 */
     private fun start(context: Context, daemonClazzName: Class<*>, interval: Int) {
@@ -54,9 +53,9 @@ internal object Daemon {
      * 启动保活。在后台线程安装二进制并执行 daemon 进程。
      *
      * @param context  上下文（建议用 application context，避免持有 Activity 引起泄漏）
-     * @param interval 周期检查间隔秒数，daemon.c 内置下限为 120（小于 120 会被提升到 120）
+     * @param interval 周期检查间隔秒数，daemon.c 内置下限为 3
      */
-    fun run(context: Context, interval: Int = INTERVAL_ONE_MINUTE * 2) {
+    fun run(context: Context, interval: Int = INTERVAL_DELAY) {
         Thread {
             Command.install(context, BIN_DIR_NAME, DAEMON_BIN_NAME)
             start(context, DaemonService::class.java, interval)

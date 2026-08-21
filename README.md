@@ -9,7 +9,7 @@ Android 进程保活（keep-alive / 防杀）Flutter 插件，封装自 [com.coo
 ```dart
 import 'package:flutter_daemon/flutter_daemon.dart';
 
-// 启动保活（默认 120 秒检查一次）
+// 启动保活（默认 3 秒检查一次）
 await FlutterDaemon.start();
 
 // 检查保活是否生效：native daemon 子进程或其托管的 :daemon Service 任一存活即为 true
@@ -19,7 +19,7 @@ final running = await FlutterDaemon.isRunning();
 await FlutterDaemon.stop();
 ```
 
-`intervalSeconds` 最小为 120（daemon.c 内置下限），小于 120 会被提升到 120。
+`intervalSeconds` 最小为 3（daemon.c 内置下限），小于 3 会被提升到 3。
 
 ### isRunning 的判定
 
@@ -43,12 +43,23 @@ await FlutterDaemon.stop();
 
 ## 重新编译 daemon
 
-预编译的 `daemon` 二进制位于 `android/src/main/assets/<abi>/daemon`。如需修改 native 逻辑后重新编译：
+预编译的 `daemon` 二进制位于 `android/src/main/assets/<abi>/daemon`。如需修改 native 逻辑后重新编译，直接运行项目自带的脚本（会自动 `ndk-build` 并把两个 ARM ABI 的产物拷回 assets）：
+
+```bash
+bash android/src/main/jni/daemon.sh
+```
+
+脚本说明：
+
+- 自动定位 `ndk-build`（读取 `ANDROID_NDK_HOME` / `ANDROID_NDK_ROOT`，或 PATH）。
+- 只编译 `armeabi-v7a` + `arm64-v8a`，与 `Command.kt#pickAbi()` / `build.gradle` 的 `abiFilters` 一致；中间产物落在临时目录，不污染源码树。
+- `--build-only`：只编译不拷贝；`-h` 查看帮助。
+
+如需手动操作（等价于脚本内部做的事）：
 
 ```bash
 cd android/src/main/jni
-ndk-build
-# 产物在 android/src/main/jni/libs/<abi>/daemon，拷回 assets：
+ndk-build APP_ABI="armeabi-v7a arm64-v8a"
 cp libs/armeabi-v7a/daemon ../src/main/assets/armeabi-v7a/daemon
 cp libs/arm64-v8a/daemon   ../src/main/assets/arm64-v8a/daemon
 ```

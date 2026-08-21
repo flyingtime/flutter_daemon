@@ -35,7 +35,7 @@ class DaemonService : Service() {
         super.onCreate()
         Log.i(TAG, "DaemonService -> onCreate, Thread ID: ${Thread.currentThread().id}")
         // 再次启动 daemon 进程，保证 daemon 始终存活（daemon 内部会杀掉旧的 daemon 实例）
-        Daemon.run(applicationContext, Daemon.INTERVAL_ONE_MINUTE * 2)
+        Daemon.run(applicationContext, Daemon.INTERVAL_DELAY)
         ensureForeground()
     }
 

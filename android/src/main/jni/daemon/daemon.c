@@ -19,12 +19,16 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
+#include <time.h>
 
 #include "common.h"
 
 #define LOG_TAG "Daemon"
 #define MAXFILE 3
-#define SLEEP_INTERVAL 2 * 60
+/* 保活拉起间隔（秒）：随机落在 [MIN, MAX] 区间，避免固定节奏被系统/省电策略识别。
+ * 原版固定下限 3s，按需改为 3~10s 的短随机间隔，使 app 被杀后更快被拉回。 */
+#define SLEEP_INTERVAL_MIN 3
+#define SLEEP_INTERVAL_MAX 10
 
 volatile int sig_running = 1;
 
@@ -86,7 +90,9 @@ int main(int argc, char *argv[])
 	char *package_name = NULL;
 	char *service_name = NULL;
 	char *daemon_file_dir = NULL;
-	int interval = SLEEP_INTERVAL;
+	/* interval 初值：仅作为进入主循环前的占位，主循环每轮都会用
+	 * SLEEP_INTERVAL_MIN..MAX 的随机值覆盖（见下方 while 循环）。此处取下限。 */
+	int interval = SLEEP_INTERVAL_MIN;
 
 	LOGI(LOG_TAG, "Copyright (c) 2015-2016, Vincent Cheung<coolingfall@gmail.com>");
 
@@ -180,9 +186,14 @@ int main(int argc, char *argv[])
 
 		LOGD(LOG_TAG, "child process fork ok, daemon start: %d", getpid());
 
+		/* seed for per-iteration random interval */
+		srand((unsigned int)(getpid() ^ (int)time(NULL)));
+
 		while (sig_running)
 		{
-			interval = interval < SLEEP_INTERVAL ? SLEEP_INTERVAL : interval;
+			/* 每次随机取 [MIN, MAX] 秒作为本轮拉起间隔，不再强制下限 3s */
+			interval = SLEEP_INTERVAL_MIN +
+					   rand() % (SLEEP_INTERVAL_MAX - SLEEP_INTERVAL_MIN + 1);
 			select_sleep(interval, 0);
 
 			LOGD(LOG_TAG, "check the service once, interval: %d", interval);

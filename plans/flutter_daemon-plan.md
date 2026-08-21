@@ -86,8 +86,8 @@ flutter:
 class FlutterDaemon {
   static const _channel = MethodChannel('flutter_daemon');
 
-  /// 启动保活守护。intervalSeconds 为检查拉起间隔，最小 120（daemon.c 内置下限）。
-  static Future<bool> start({int intervalSeconds = 120}) async {
+  /// 启动保活守护。intervalSeconds 为检查拉起间隔，最小 3（daemon.c 内置下限）。
+  static Future<bool> start({int intervalSeconds = 3}) async {
     return await _channel.invokeMethod<bool>('start', {'intervalSeconds': intervalSeconds}) ?? false;
   }
 
@@ -104,7 +104,7 @@ class FlutterDaemon {
 **`daemon/Daemon.kt`**（迁自 `library/src/main/java/com/coolerfall/daemon/Daemon.java`，包名改 `com.flutter_daemon.daemon`）：
 - 保留 `run(context, daemonServiceClazz, interval)` 逻辑：开线程 → `Command.install()` 拷贝二进制并 chmod 0755 → `Runtime.exec("daemon -p <pkg> -s <service全名> -t <interval>")`。
 - service 类固定为 `DaemonService::class.java`（内置），不再由调用方传。
-- 常量 `INTERVAL_ONE_MINUTE=60`、`INTERVAL_ONE_HOUR=3600` 保留。
+- 常量 `INTERVAL_DELAY=3` 保留。
 
 **`daemon/Command.kt`**（迁自 `Command.java`）：
 - **修正 ABI 判断**：原 `Build.CPU_ABI`（API 21 废弃/26 移除）→ 改用 `Build.SUPPORTED_ABIS[0]`，匹配 `armeabi-v7a` / `arm64-v8a`（只带这两个，命中不到则回退 arm64-v8a）。
@@ -112,7 +112,7 @@ class FlutterDaemon {
 - 资产路径：插件 `android/src/main/assets/<abi>/daemon` 会被打进 AAR assets，宿主打包合并后 `context.getAssets().open("<abi>/daemon")` 可正常读取（与原 library 同理）。
 
 **`service/DaemonService.kt`**（通用版，替代 `app/.../DaemonService.java`）：
-- `onCreate()`：`Daemon.run(this, DaemonService::class.java, INTERVAL_ONE_MINUTE * 2)`。
+- `onCreate()`：`Daemon.run(this, DaemonService::class.java, INTERVAL_DELAY)`。
 - `onStartCommand()`：
   - API 26+ 先 `startForeground()` + 通知（避免后台 Service 限制导致 ANR/crash），在 `onCreate` 建 channel。
   - 用 `PackageManager.getLaunchIntentForPackage(packageName)` 拉起**自身** LAUNCHER（去掉硬编码 `com.iotsk.showinformations`，去掉废弃的 `getRunningTasks` + `GET_TASKS` 权限）。
@@ -145,7 +145,7 @@ class FlutterDaemon {
 
 ### 7. example（自测用）
 
-`example/lib/main.dart`：一个按钮调 `FlutterDaemon.start(intervalSeconds: 120)`，再 `stop()` / `isRunning()` 验证。`example/pubspec.yaml` 用 `path: ../` 依赖插件。用于验证插件能 `flutter pub get` + 编译 + 运行。
+`example/lib/main.dart`：一个按钮调 `FlutterDaemon.start(intervalSeconds: 3)`，再 `stop()` / `isRunning()` 验证。`example/pubspec.yaml` 用 `path: ../` 依赖插件。用于验证插件能 `flutter pub get` + 编译 + 运行。
 
 ---
 

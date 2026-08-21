@@ -15,7 +15,7 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('start then isRunning', (WidgetTester tester) async {
-    final started = await FlutterDaemon.start(intervalSeconds: 120);
+    final started = await FlutterDaemon.start(intervalSeconds: 3);
     expect(started, true);
     // daemon 进程在真实设备上启动后应处于运行态（CI / 模拟器可能失败）
     final running = await FlutterDaemon.isRunning();

@@ -1,5 +1,6 @@
 package com.flutter_daemon.flutter_daemon.service
 
+import android.app.ActivityManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -35,13 +36,18 @@ class DaemonService : Service() {
         super.onCreate()
         Log.i(TAG, "DaemonService -> onCreate, Thread ID: ${Thread.currentThread().id}")
         // 再次启动 daemon 进程，保证 daemon 始终存活（daemon 内部会杀掉旧的 daemon 实例）
-        Daemon.run(applicationContext, Daemon.INTERVAL_ONE_MINUTE * 2)
+        Daemon.run(applicationContext, Daemon.INTERVAL_DELAY)
         ensureForeground()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.i(TAG, "DaemonService -> onStartCommand, Thread ID: ${Thread.currentThread().id}")
-        launchSelf()
+        // 仅在 app 主进程不存在时才拉起自身 LAUNCHER，实现「app 被杀后自恢复」。
+        // daemon 每 interval 秒 `am startservice` 一次都会进到 onStartCommand；若每次都
+        // 无条件 launchSelf，会在 app 已在前台时被反复 startActivity 打断渲染、出现白屏/闪屏。
+        if (!isMainProcessAlive()) {
+            launchSelf()
+        }
         return START_STICKY
     }
 
@@ -100,11 +106,29 @@ class DaemonService : Service() {
         startForeground(NOTIFICATION_ID, notification)
     }
 
+    /**
+     * 判断 app 主进程是否存活。
+     *
+     * [DaemonService] 跑在 `:daemon` 独立进程，与主进程同 uid；[ActivityManager.getRunningAppProcesses]
+     * 对调用者同 uid 的进程可见，故可据此判断主进程（进程名 == [packageName]）是否还在。
+     * 拿不到进程列表（返回 null）时保守视为「不存活」，保证「app 被杀后自恢复」不漏拉。
+     */
+    private fun isMainProcessAlive(): Boolean {
+        val am = getSystemService(ACTIVITY_SERVICE) as? ActivityManager ?: return false
+        val processes = am.runningAppProcesses ?: return false
+        return processes.any { it.processName == packageName }
+    }
+
     /** 拉起本应用自身的 LAUNCHER activity（不依赖任何硬编码包名）。 */
     private fun launchSelf() {
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
         if (launchIntent != null) {
+            // 从独立 :daemon 进程跨进程拉起主界面。FLAG_ACTIVITY_NEW_TASK 必须带（跨进程
+            // startActivity 要求）。叠加 NEW_TASK | REORDER_TO_FRONT 让已存在的 task 前台化、
+            // 复用现有实例（MainActivity 为 singleTop），而不是反复冷启动 FlutterActivity
+            // 导致渲染被反复打断、卡在 LaunchTheme 白屏。
             launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
             try {
                 startActivity(launchIntent)
                 Log.i(TAG, "DaemonService -> launch self: $packageName")

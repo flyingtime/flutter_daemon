@@ -9,7 +9,7 @@ Android 进程保活（keep-alive / 防杀）Flutter 插件，封装自 [com.coo
 ```dart
 import 'package:flutter_daemon/flutter_daemon.dart';
 
-// 启动保活（默认 120 秒检查一次）
+// 启动保活（默认 3 秒检查一次）
 await FlutterDaemon.start();
 
 // 检查保活是否生效：native daemon 子进程或其托管的 :daemon Service 任一存活即为 true
@@ -19,7 +19,7 @@ final running = await FlutterDaemon.isRunning();
 await FlutterDaemon.stop();
 ```
 
-`intervalSeconds` 最小为 120（daemon.c 内置下限），小于 120 会被提升到 120。
+`intervalSeconds` 最小为 3（daemon.c 内置下限），小于 3 会被提升到 3。
 
 ### isRunning 的判定
 
