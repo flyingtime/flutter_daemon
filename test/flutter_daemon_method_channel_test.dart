@@ -12,9 +12,7 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (methodCall) async {
       switch (methodCall.method) {
-        case 'start':
-          return true;
-        case 'stop':
+        case 'enable':
           return true;
         case 'isRunning':
           return false;
@@ -29,12 +27,8 @@ void main() {
         .setMockMethodCallHandler(channel, null);
   });
 
-  test('start returns true via method channel', () async {
-    expect(await platform.start(intervalSeconds: 180), isTrue);
-  });
-
-  test('stop returns true via method channel', () async {
-    expect(await platform.stop(), isTrue);
+  test('enable returns true via method channel', () async {
+    expect(await platform.enable(intervalSeconds: 180), isTrue);
   });
 
   test('isRunning returns false via method channel', () async {

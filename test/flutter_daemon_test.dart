@@ -7,21 +7,14 @@ import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 class MockFlutterDaemonPlatform
     with MockPlatformInterfaceMixin
     implements FlutterDaemonPlatform {
-  bool startCalled = false;
+  bool enableCalled = false;
   int? lastInterval;
-  bool stopCalled = false;
   bool isRunningCalled = false;
 
   @override
-  Future<bool> start({int intervalSeconds = 3}) async {
-    startCalled = true;
+  Future<bool> enable({int intervalSeconds = 3}) async {
+    enableCalled = true;
     lastInterval = intervalSeconds;
-    return true;
-  }
-
-  @override
-  Future<bool> stop() async {
-    stopCalled = true;
     return true;
   }
 
@@ -39,23 +32,14 @@ void main() {
     expect(initialPlatform, isA<MethodChannelFlutterDaemon>());
   });
 
-  test('start delegates to platform with interval', () async {
+  test('enable delegates to platform with interval', () async {
     final fake = MockFlutterDaemonPlatform();
     FlutterDaemonPlatform.instance = fake;
 
-    final ok = await FlutterDaemon.start(intervalSeconds: 180);
+    final ok = await FlutterDaemon.enable(intervalSeconds: 180);
     expect(ok, isTrue);
-    expect(fake.startCalled, isTrue);
+    expect(fake.enableCalled, isTrue);
     expect(fake.lastInterval, 180);
-  });
-
-  test('stop delegates to platform', () async {
-    final fake = MockFlutterDaemonPlatform();
-    FlutterDaemonPlatform.instance = fake;
-
-    final ok = await FlutterDaemon.stop();
-    expect(ok, isTrue);
-    expect(fake.stopCalled, isTrue);
   });
 
   test('isRunning delegates to platform', () async {

@@ -14,9 +14,9 @@ import 'package:flutter_daemon/flutter_daemon.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('start then isRunning', (WidgetTester tester) async {
-    final started = await FlutterDaemon.start(intervalSeconds: 3);
-    expect(started, true);
+  testWidgets('enable then isRunning', (WidgetTester tester) async {
+    final enabled = await FlutterDaemon.enable(intervalSeconds: 3);
+    expect(enabled, true);
     // daemon 进程在真实设备上启动后应处于运行态（CI / 模拟器可能失败）
     final running = await FlutterDaemon.isRunning();
     expect(running, isA<bool>());

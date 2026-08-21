@@ -21,24 +21,15 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
-    // 冷启动时自动检测保活是否已激活：app 被杀后由 daemon 自动拉起时，
-    // native daemon / :daemon 进程通常仍在运行，这里据此还原真实状态。
-    _check();
+    // 示例应用启动后直接启用保活，不依赖用户再次点击按钮。
+    _enable();
   }
 
-  Future<void> _start() async {
-    final ok = await FlutterDaemon.start(intervalSeconds: 3);
+  Future<void> _enable() async {
+    final ok = await FlutterDaemon.enable(intervalSeconds: 3);
     setState(() {
       _running = ok;
       _status = ok ? '已启动保活（间隔 3s）' : '启动失败';
-    });
-  }
-
-  Future<void> _stop() async {
-    await FlutterDaemon.stop();
-    setState(() {
-      _running = false;
-      _status = '已停止保活';
     });
   }
 
@@ -61,9 +52,7 @@ class _MyAppState extends State<MyApp> {
             children: [
               Text(_status),
               const SizedBox(height: 24),
-              ElevatedButton(onPressed: _start, child: const Text('启动保活')),
-              const SizedBox(height: 12),
-              ElevatedButton(onPressed: _stop, child: const Text('停止保活')),
+              ElevatedButton(onPressed: _enable, child: const Text('启用保活')),
               const SizedBox(height: 12),
               ElevatedButton(onPressed: _check, child: const Text('检查状态')),
               const SizedBox(height: 24),

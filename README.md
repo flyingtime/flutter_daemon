@@ -9,15 +9,14 @@ Android 进程保活（keep-alive / 防杀）Flutter 插件，封装自 [com.coo
 ```dart
 import 'package:flutter_daemon/flutter_daemon.dart';
 
-// 启动保活（默认 3 秒检查一次）
-await FlutterDaemon.start();
+// 启用持续保活（默认 3 秒检查一次）。建议在应用启动时调用。
+await FlutterDaemon.enable();
 
 // 检查保活是否生效：native daemon 子进程或其托管的 :daemon Service 任一存活即为 true
 final running = await FlutterDaemon.isRunning();
-
-// 停止保活
-await FlutterDaemon.stop();
 ```
+
+插件只提供 `enable()`，不提供停止保活接口。保活由应用启动时启用，并持续运行到应用被卸载或用户在系统设置中强行停止应用。
 
 `intervalSeconds` 最小为 3（daemon.c 内置下限），小于 3 会被提升到 3。
 
@@ -25,9 +24,21 @@ await FlutterDaemon.stop();
 
 `isRunning()` 返回 native daemon 子进程 **或** 其托管的 `DaemonService`（独立 `:daemon` 进程）任一是否存活。app 被杀后由 daemon 自动拉起时，两者往往交替存活（daemon 可能短暂缺位而 `:daemon` Service 仍在跑），任一存活即视为保活已生效，避免把“已自动恢复”误报成“未启动”。
 
+### 推荐接入方式
+
+在宿主应用的第一个 Flutter 页面或应用初始化逻辑中调用一次：
+
+```dart
+Future<void> initializeKeepAlive() async {
+  await FlutterDaemon.enable(intervalSeconds: 3);
+}
+```
+
+示例应用已经在启动时自动调用 `enable()`，并提供“检查状态”按钮用于观察 daemon 或前台 Service 是否存活。
+
 ## 工作机制
 
-1. `FlutterDaemon.start()` → `Daemon.run()`：把打包在 assets 里的 native `daemon` 二进制释放到应用私有目录并 `chmod 0755`，再执行 `daemon -p <包名> -s <DaemonService 全名> -t <间隔秒>`。
+1. `FlutterDaemon.enable()` → `Daemon.run()`：把打包在 assets 里的 native `daemon` 二进制释放到应用私有目录并 `chmod 0755`，再执行 `daemon -p <包名> -s <DaemonService 全名> -t <间隔秒>`。
 2. native daemon（`android/src/main/jni/daemon/daemon.c`）fork 出子进程，`setsid()` 成为会话首、关闭标准 IO，进入循环：每隔 `interval` 秒执行一次 `am startservice -n <pkg>/<DaemonService>`。
 3. `DaemonService`（`com.flutter_daemon.flutter_daemon.service.DaemonService`）被拉起后：API 26+ 转前台 Service，并通过 `PackageManager.getLaunchIntentForPackage(packageName)` 拉起应用自身的 LAUNCHER activity。
 

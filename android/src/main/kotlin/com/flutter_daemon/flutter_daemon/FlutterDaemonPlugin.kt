@@ -33,7 +33,7 @@ class FlutterDaemonPlugin : FlutterPlugin, MethodCallHandler {
             return
         }
         when (call.method) {
-            "start" -> {
+            "enable" -> {
                 val interval = (call.argument<Int>("intervalSeconds") ?: 3)
                 // 与原版 InformationCore_Flutter 一致：先直接 startService 把 :daemon
                 // Service 拉起，保证保活即时生效，不必等到 native daemon 的首个 3s 周期。
@@ -42,10 +42,6 @@ class FlutterDaemonPlugin : FlutterPlugin, MethodCallHandler {
                 Daemon.run(context, interval)
                 Log.i(tag, "start daemon, interval=$interval")
                 result.success(true)
-            }
-            "stop" -> {
-                val killed = killDaemonProcesses()
-                result.success(killed)
             }
             "isRunning" -> {
                 result.success(isDaemonRunning())
@@ -63,7 +59,7 @@ class FlutterDaemonPlugin : FlutterPlugin, MethodCallHandler {
      * 直接拉起 [DaemonService]（:daemon 独立进程）。
      *
      * 与原版 InformationCore_Flutter/app 的 `startService(new Intent(this, DaemonService.class))`
-     * 行为一致：保证调用 start() 后 :daemon Service 立即就绪，不必等 native daemon 的首个
+     * 行为一致：保证调用 enable() 后 :daemon Service 立即就绪，不必等 native daemon 的首个
      * `interval`（默认 3s）周期。Service 起来后会在 [DaemonService.onCreate] 里再次
      * 启动 native daemon，形成"Service ↔ daemon"双向互拉。
      *
@@ -122,7 +118,7 @@ class FlutterDaemonPlugin : FlutterPlugin, MethodCallHandler {
     /**
      * 遍历 /proc 下各 PID 目录的 cmdline，查找名为 daemon 的进程 PID。
      * 逻辑等价于 native common.c 中的 find_pid_by_name，这里用 Kotlin 复刻，
-     * 用于在 Dart 侧提供 stop / isRunning 能力。
+     * 用于在 Dart 侧提供 isRunning 能力。
      */
     private fun findDaemonPids(): List<Int> {
         val pids = mutableListOf<Int>()
@@ -158,16 +154,4 @@ class FlutterDaemonPlugin : FlutterPlugin, MethodCallHandler {
         return pids
     }
 
-    /** 杀掉所有 daemon 进程；返回是否成功 kill 至少一个。 */
-    private fun killDaemonProcesses(): Boolean {
-        val pids = findDaemonPids()
-        var killed = false
-        for (pid in pids) {
-            if (pid <= 1) continue
-            android.os.Process.killProcess(pid)
-            Log.d(tag, "kill daemon pid=$pid")
-            killed = true
-        }
-        return killed
-    }
 }

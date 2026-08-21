@@ -10,17 +10,11 @@ class MethodChannelFlutterDaemon extends FlutterDaemonPlatform {
   final methodChannel = const MethodChannel('flutter_daemon');
 
   @override
-  Future<bool> start({int intervalSeconds = 3}) async {
+  Future<bool> enable({int intervalSeconds = 3}) async {
     final result = await methodChannel.invokeMethod<bool>(
-      'start',
+      'enable',
       <String, dynamic>{'intervalSeconds': intervalSeconds},
     );
-    return result ?? false;
-  }
-
-  @override
-  Future<bool> stop() async {
-    final result = await methodChannel.invokeMethod<bool>('stop');
     return result ?? false;
   }
 

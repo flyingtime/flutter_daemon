@@ -19,16 +19,11 @@ abstract class FlutterDaemonPlatform extends PlatformInterface {
     _instance = instance;
   }
 
-  /// 启动保活守护进程。
+  /// 启用持续保活。
   ///
   /// [intervalSeconds] 为 daemon 周期性检查并拉起 Service/应用的间隔秒数，
-  Future<bool> start({int intervalSeconds = 3}) {
-    throw UnimplementedError('start() has not been implemented.');
-  }
-
-  /// 停止保活：终止 daemon 子进程。
-  Future<bool> stop() {
-    throw UnimplementedError('stop() has not been implemented.');
+  Future<bool> enable({int intervalSeconds = 3}) {
+    throw UnimplementedError('enable() has not been implemented.');
   }
 
   /// 保活是否处于激活状态：native daemon 子进程或其托管的 `DaemonService`

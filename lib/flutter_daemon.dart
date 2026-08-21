@@ -7,23 +7,18 @@ import 'flutter_daemon_platform_interface.dart';
 ///
 /// 典型用法：
 /// ```dart
-/// await FlutterDaemon.start(); // 默认 3 秒检查一次
+/// await FlutterDaemon.enable(); // 默认 3 秒检查一次
 /// ```
 ///
 /// 注意：保活在新型 Android（API 26+ 后台 Service 限制、API 31+ 前台 Service
 /// 启动限制、各厂商激进省电策略）上不可靠，详见 README「兼容性风险」。
 class FlutterDaemon {
-  /// 启动保活守护进程。
+  /// 启用持续保活。
   ///
   /// [intervalSeconds] 为 daemon 周期性检查间隔，最小 3 秒（daemon.c 内置下限）。
-  static Future<bool> start({int intervalSeconds = 3}) {
+  static Future<bool> enable({int intervalSeconds = 3}) {
     return FlutterDaemonPlatform.instance
-        .start(intervalSeconds: intervalSeconds);
-  }
-
-  /// 停止保活，终止 daemon 子进程。
-  static Future<bool> stop() {
-    return FlutterDaemonPlatform.instance.stop();
+        .enable(intervalSeconds: intervalSeconds);
   }
 
   /// 保活是否处于激活状态。
