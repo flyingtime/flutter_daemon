@@ -1,6 +1,8 @@
 package com.flutter_daemon.flutter_daemon
 
 import android.content.Context
+import android.content.Intent
+import android.os.Build
 import android.util.Log
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
@@ -8,6 +10,7 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
 import com.flutter_daemon.flutter_daemon.daemon.Daemon
+import com.flutter_daemon.flutter_daemon.service.DaemonService
 import java.io.File
 
 /** FlutterDaemonPlugin：Dart 侧 MethodChannel("flutter_daemon") 的 Android 实现。 */
@@ -32,6 +35,10 @@ class FlutterDaemonPlugin : FlutterPlugin, MethodCallHandler {
         when (call.method) {
             "start" -> {
                 val interval = (call.argument<Int>("intervalSeconds") ?: 120)
+                // 与原版 InformationCore_Flutter 一致：先直接 startService 把 :daemon
+                // Service 拉起，保证保活即时生效，不必等到 native daemon 的首个 120s 周期。
+                startDaemonService(context)
+                // 再 fork native daemon 子进程做周期性兜底拉起。
                 Daemon.run(context, interval)
                 Log.i(tag, "start daemon, interval=$interval")
                 result.success(true)
@@ -50,6 +57,33 @@ class FlutterDaemonPlugin : FlutterPlugin, MethodCallHandler {
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel.setMethodCallHandler(null)
         applicationContext = null
+    }
+
+    /**
+     * 直接拉起 [DaemonService]（:daemon 独立进程）。
+     *
+     * 与原版 InformationCore_Flutter/app 的 `startService(new Intent(this, DaemonService.class))`
+     * 行为一致：保证调用 start() 后 :daemon Service 立即就绪，不必等 native daemon 的首个
+     * `interval`（默认 120s）周期。Service 起来后会在 [DaemonService.onCreate] 里再次
+     * 启动 native daemon，形成"Service ↔ daemon"双向互拉。
+     *
+     * 注意：API 26+ 禁止后台应用直接 startService，故在后台调用时降级为只依赖 native daemon
+     * 周期拉起（Daemon.run）；前台调用（应用启动时点击）不受影响。
+     */
+    private fun startDaemonService(context: Context) {
+        val intent = Intent(context, DaemonService::class.java)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+            Log.i(tag, "startDaemonService: :daemon service started")
+        } catch (e: Exception) {
+            // 后台启动前台 Service 受限（API 31+）或后台 startService 受限（API 26+），
+            // 此处降级：仅依赖 native daemon 周期拉起，不影响保活主链路。
+            Log.w(tag, "startDaemonService failed (will rely on native daemon): ${e.message}")
+        }
     }
 
     /**

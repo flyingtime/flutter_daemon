@@ -54,7 +54,21 @@ class DaemonService : Service() {
         super.onDestroy()
     }
 
-    /** API 26+ 需前台 Service，否则后台 startservice 会抛 IllegalStateException。 */
+    /**
+     * 转前台 Service 并展示常驻通知。
+     *
+     * **所有 API 都必须调用 [startForeground]**：前台 Service 优先级更高，被系统
+     * 低内存/后台清理回收的概率更低，是这套保活机制能"扛普通杀"的关键一环。
+     *
+     * - API 26+：必须先建 [NotificationChannel]，且 [Notification.Builder] 要带 channelId，
+     *   否则 startForeground 会静默失败或抛异常。
+     * - API < 26：用无 channelId 的 [Notification.Builder]（该构造在 API 26 起废弃，
+     *   但低版本只能这样用）。
+     *
+     * 之前的实现把整个逻辑包在 `SDK_INT >= O` 里，导致 Android 7.x（API 25）及以下
+     * 完全不调 startForeground，Service 一直是后台 Service——既无常驻通知，优先级也低，
+     * 被系统回收的概率明显更高。
+     */
     private fun ensureForeground() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
@@ -69,14 +83,21 @@ class DaemonService : Service() {
                 }
                 manager.createNotificationChannel(channel)
             }
-            val notification: Notification = Notification.Builder(this, CHANNEL_ID)
-                .setContentTitle(CHANNEL_NAME)
-                .setContentText("保活服务运行中")
-                .setSmallIcon(android.R.drawable.stat_notify_sync)
-                .setOngoing(true)
-                .build()
-            startForeground(NOTIFICATION_ID, notification)
         }
+
+        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, CHANNEL_ID)
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this)
+        }
+        val notification = builder
+            .setContentTitle(CHANNEL_NAME)
+            .setContentText("保活服务运行中")
+            .setSmallIcon(android.R.drawable.stat_notify_sync)
+            .setOngoing(true)
+            .build()
+        startForeground(NOTIFICATION_ID, notification)
     }
 
     /** 拉起本应用自身的 LAUNCHER activity（不依赖任何硬编码包名）。 */
