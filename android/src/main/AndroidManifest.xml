@@ -1,0 +1,20 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 前台 Service（API 29+ 需声明 FOREGROUND_SERVICE 才能调用 startForeground） -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Android 13+ 前台 Service 通知需 POST_NOTIFICATIONS 才能展示 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application>
+        <!--
+          保活 Service，跑在 :daemon 独立进程，由 native daemon 进程通过
+          `am startservice -n <pkg>/com.flutter_daemon.flutter_daemon.service.DaemonService` 拉起。
+          宿主无需手动声明，manifest merger 会自动合并。
+        -->
+        <service
+            android:name="com.flutter_daemon.flutter_daemon.service.DaemonService"
+            android:process=":daemon"
+            android:exported="false" />
+    </application>
+
+</manifest>

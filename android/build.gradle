@@ -1,0 +1,67 @@
+group = "com.flutter_daemon.flutter_daemon"
+version = "1.0-SNAPSHOT"
+
+buildscript {
+    ext.kotlin_version = "1.9.10"
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        // 与宿主 InformationCore_Flutter 使用的 AGP 7.3.0 对齐，保证 add-to-app 宿主能合并本插件
+        classpath("com.android.tools.build:gradle:7.3.0")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version")
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: "com.android.library"
+apply plugin: "kotlin-android"
+
+android {
+    namespace = "com.flutter_daemon.flutter_daemon"
+
+    compileSdk = 33
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = "1.8"
+    }
+
+    sourceSets {
+        main.java.srcDirs += "src/main/kotlin"
+        test.java.srcDirs += "src/test/kotlin"
+        // daemon 二进制以 assets 形式分发，由 Command.install 在运行时拷到私有目录并 chmod
+        main.assets.srcDirs += ["src/main/assets"]
+        // 不让 gradle 自动 ndk-build；如需重新编译二进制，见 README「重新编译 daemon」
+        main.jni.srcDirs = []
+    }
+
+    defaultConfig {
+        minSdk = 21
+        // 仅带 ARM 双架构，与宿主 abiFilters 一致
+        ndk {
+            abiFilters "armeabi-v7a", "arm64-v8a"
+        }
+    }
+
+    lintOptions {
+        abortOnError false
+    }
+}
+
+dependencies {
+    testImplementation("org.jetbrains.kotlin:kotlin-test")
+    testImplementation("org.mockito:mockito-core:5.0.0")
+}
