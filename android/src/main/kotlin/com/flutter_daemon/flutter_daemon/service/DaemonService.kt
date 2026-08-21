@@ -42,10 +42,11 @@ class DaemonService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.i(TAG, "DaemonService -> onStartCommand, Thread ID: ${Thread.currentThread().id}")
-        // 仅在 app 主进程不存在时才拉起自身 LAUNCHER，实现「app 被杀后自恢复」。
-        // daemon 每 interval 秒 `am startservice` 一次都会进到 onStartCommand；若每次都
-        // 无条件 launchSelf，会在 app 已在前台时被反复 startActivity 打断渲染、出现白屏/闪屏。
-        if (!isMainProcessAlive()) {
+        // 进程仍存活不代表界面任务仍存在：从最近任务划掉 Flutter Activity 后，
+        // Android 可能只移除 task，保留主进程。此时单看进程会漏掉恢复。
+        // daemon 每 interval 秒都会进入这里，因此只有“主进程不存在”或“应用 task 不存在”
+        // 时才拉起 LAUNCHER，避免应用正常显示时反复 startActivity 导致白屏/闪屏。
+        if (!isMainProcessAlive() || !hasAppTask()) {
             launchSelf()
         }
         return START_STICKY
@@ -117,6 +118,26 @@ class DaemonService : Service() {
         val am = getSystemService(ACTIVITY_SERVICE) as? ActivityManager ?: return false
         val processes = am.runningAppProcesses ?: return false
         return processes.any { it.processName == packageName }
+    }
+
+    /**
+     * 判断应用是否仍有任务记录。
+     *
+     * 从最近任务划掉应用时，主进程可能短时间继续存活，但其 task 已经被移除；
+     * [ActivityManager.getAppTasks] 能区分这两种状态，避免把“无界面”误判成“已恢复”。
+     */
+    private fun hasAppTask(): Boolean {
+        val am = getSystemService(ACTIVITY_SERVICE) as? ActivityManager ?: return false
+        return try {
+            am.appTasks.any { task ->
+                val info = task.taskInfo
+                info.baseActivity?.packageName == packageName ||
+                    info.topActivity?.packageName == packageName
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "query app tasks failed: ${e.message}")
+            false
+        }
     }
 
     /** 拉起本应用自身的 LAUNCHER activity（不依赖任何硬编码包名）。 */
