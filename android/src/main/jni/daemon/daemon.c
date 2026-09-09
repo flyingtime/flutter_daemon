@@ -83,6 +83,52 @@ static void start_service(char *package_name, char *service_name)
 	}
 }
 
+/* 向保活 Receiver 发送广播。
+ * 部分 Android 7.x ROM 对"已运行 Service"重复 am startservice 不再派发
+ * onStartCommand,导致 Service 内的检测逻辑失去触发机会;broadcast 对
+ * 已注册的动态 Receiver 总是有效派发,与 startservice 互为备份。 */
+static void send_keepalive_broadcast(char *package_name)
+{
+	pid_t pid;
+
+	if ((pid = fork()) < 0)
+	{
+		exit(EXIT_SUCCESS);
+	}
+	else if (pid == 0)
+	{
+		if (package_name == NULL)
+		{
+			return;
+		}
+
+		char *action = str_stitching(package_name, ".DaemonService.CHECK");
+		char *receiver = str_stitching(package_name,
+									   "/com.flutter_daemon.flutter_daemon.receiver.DaemonReceiver");
+		LOGD(LOG_TAG, "broadcast action: %s, receiver: %s", action, receiver);
+
+		if (get_version() >= 17)
+		{
+			execlp("am", "am", "broadcast", "--user", "0",
+				   "-a", action, "-n", receiver,
+				   (char *)NULL);
+		}
+		else
+		{
+			execlp("am", "am", "broadcast", "-a", action, "-n", receiver,
+				   (char *)NULL);
+		}
+
+		/* execlp 只有失败才会返回 */
+		LOGE(LOG_TAG, "execlp am broadcast failed: %s", strerror(errno));
+		exit(EXIT_SUCCESS);
+	}
+	else
+	{
+		waitpid(pid, NULL, 0);
+	}
+}
+
 int main(int argc, char *argv[])
 {
 	int i;
@@ -200,6 +246,9 @@ int main(int argc, char *argv[])
 
 			/* start service */
 			start_service(package_name, service_name);
+
+			/* 同时发广播触发 Service 内的检测逻辑(见 send_keepalive_broadcast 注释) */
+			send_keepalive_broadcast(package_name);
 		}
 
 		exit(EXIT_SUCCESS);

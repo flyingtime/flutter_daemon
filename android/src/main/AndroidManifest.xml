@@ -15,6 +15,17 @@
             android:name="com.flutter_daemon.flutter_daemon.service.DaemonService"
             android:process=":daemon"
             android:exported="false" />
+
+        <!--
+          保活广播接收器,跑在 :daemon 独立进程,由 native daemon 进程通过
+          `am broadcast -a <pkg>.DaemonService.CHECK -n <pkg>/...DaemonReceiver` 周期触发。
+          部分 Android 7.x ROM 对已运行 Service 重复 startservice 不派发 onStartCommand,
+          broadcast 通路与其互为备份。
+        -->
+        <receiver
+            android:name="com.flutter_daemon.flutter_daemon.receiver.DaemonReceiver"
+            android:process=":daemon"
+            android:exported="false" />
     </application>
 
 </manifest>

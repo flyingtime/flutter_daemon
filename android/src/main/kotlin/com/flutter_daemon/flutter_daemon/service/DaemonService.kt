@@ -1,14 +1,16 @@
 package com.flutter_daemon.flutter_daemon.service
 
-import android.app.ActivityManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.Log
+import com.flutter_daemon.flutter_daemon.KeepAliveChecker
 import com.flutter_daemon.flutter_daemon.daemon.Daemon
 
 /**
@@ -30,6 +32,26 @@ class DaemonService : Service() {
         private const val CHANNEL_ID = "flutter_daemon_keepalive"
         private const val CHANNEL_NAME = "保活"
         private const val NOTIFICATION_ID = 0xD001
+
+        /** watchdog 巡检间隔(毫秒) */
+        private const val WATCHDOG_INTERVAL_MS = 5000L
+    }
+
+    /** native daemon 巡检器:daemon 被系统清理后由此重新拉起 */
+    private val watchdog = Handler(Looper.getMainLooper())
+
+    private val watchdogTask = object : Runnable {
+        override fun run() {
+            if (!Daemon.isRunning(packageName)) {
+                Log.w(TAG, "watchdog: native daemon missing, restart it")
+                Daemon.run(applicationContext, Daemon.INTERVAL_DELAY)
+            }
+            watchdog.postDelayed(this, WATCHDOG_INTERVAL_MS)
+        }
+    }
+
+    private fun startWatchdog() {
+        watchdog.postDelayed(watchdogTask, WATCHDOG_INTERVAL_MS)
     }
 
     override fun onCreate() {
@@ -38,16 +60,16 @@ class DaemonService : Service() {
         // 再次启动 daemon 进程，保证 daemon 始终存活（daemon 内部会杀掉旧的 daemon 实例）
         Daemon.run(applicationContext, Daemon.INTERVAL_DELAY)
         ensureForeground()
+        // 周期巡检 native daemon:部分 ROM(如 ZC-328E 的 GuardService)会清理同 uid 的
+        // 孤儿 native 进程,daemon 被清后 am 通路全断。Service 是 Android 组件且有前台
+        // 身份,不易被清,由它负责把 daemon 重新拉起,形成双活。
+        startWatchdog()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.i(TAG, "DaemonService -> onStartCommand, Thread ID: ${Thread.currentThread().id}")
-        // 进程仍存活不代表界面任务仍存在：从最近任务划掉 Flutter Activity 后，
-        // Android 可能只移除 task，保留主进程。此时单看进程会漏掉恢复。
-        // daemon 每 interval 秒都会进入这里，因此只有“主进程不存在”或“应用 task 不存在”
-        // 时才拉起 LAUNCHER，避免应用正常显示时反复 startActivity 导致白屏/闪屏。
-        if (!isMainProcessAlive() || !hasAppTask()) {
-            launchSelf()
+        if (KeepAliveChecker.needRevive(this)) {
+            KeepAliveChecker.launchSelf(this)
         }
         return START_STICKY
     }
@@ -58,6 +80,7 @@ class DaemonService : Service() {
 
     override fun onDestroy() {
         Log.i(TAG, "DaemonService -> onDestroy, Thread ID: ${Thread.currentThread().id}")
+        watchdog.removeCallbacks(watchdogTask)
         super.onDestroy()
     }
 
@@ -105,59 +128,5 @@ class DaemonService : Service() {
             .setOngoing(true)
             .build()
         startForeground(NOTIFICATION_ID, notification)
-    }
-
-    /**
-     * 判断 app 主进程是否存活。
-     *
-     * [DaemonService] 跑在 `:daemon` 独立进程，与主进程同 uid；[ActivityManager.getRunningAppProcesses]
-     * 对调用者同 uid 的进程可见，故可据此判断主进程（进程名 == [packageName]）是否还在。
-     * 拿不到进程列表（返回 null）时保守视为「不存活」，保证「app 被杀后自恢复」不漏拉。
-     */
-    private fun isMainProcessAlive(): Boolean {
-        val am = getSystemService(ACTIVITY_SERVICE) as? ActivityManager ?: return false
-        val processes = am.runningAppProcesses ?: return false
-        return processes.any { it.processName == packageName }
-    }
-
-    /**
-     * 判断应用是否仍有任务记录。
-     *
-     * 从最近任务划掉应用时，主进程可能短时间继续存活，但其 task 已经被移除；
-     * [ActivityManager.getAppTasks] 能区分这两种状态，避免把“无界面”误判成“已恢复”。
-     */
-    private fun hasAppTask(): Boolean {
-        val am = getSystemService(ACTIVITY_SERVICE) as? ActivityManager ?: return false
-        return try {
-            am.appTasks.any { task ->
-                val info = task.taskInfo
-                info.baseActivity?.packageName == packageName ||
-                    info.topActivity?.packageName == packageName
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "query app tasks failed: ${e.message}")
-            false
-        }
-    }
-
-    /** 拉起本应用自身的 LAUNCHER activity（不依赖任何硬编码包名）。 */
-    private fun launchSelf() {
-        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
-        if (launchIntent != null) {
-            // 从独立 :daemon 进程跨进程拉起主界面。FLAG_ACTIVITY_NEW_TASK 必须带（跨进程
-            // startActivity 要求）。叠加 NEW_TASK | REORDER_TO_FRONT 让已存在的 task 前台化、
-            // 复用现有实例（MainActivity 为 singleTop），而不是反复冷启动 FlutterActivity
-            // 导致渲染被反复打断、卡在 LaunchTheme 白屏。
-            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            launchIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-            try {
-                startActivity(launchIntent)
-                Log.i(TAG, "DaemonService -> launch self: $packageName")
-            } catch (e: Exception) {
-                Log.e(TAG, "launch self failed: ${e.message}")
-            }
-        } else {
-            Log.w(TAG, "no launch intent for package: $packageName")
-        }
     }
 }
