@@ -24,6 +24,10 @@ class FlutterDaemonPlugin : FlutterPlugin, MethodCallHandler {
         channel = MethodChannel(flutterPluginBinding.binaryMessenger, "flutter_daemon")
         channel.setMethodCallHandler(this)
         applicationContext = flutterPluginBinding.applicationContext
+        // 主进程注册首帧绘制看门狗（仅注册；[DrawWatchdog.enabled] 为 false 时不生效）。
+        // :daemon 进程没有 Flutter engine，onAttachedToEngine 不会在那里执行。
+        (flutterPluginBinding.applicationContext as? android.app.Application)
+            ?.let { DrawWatchdog.register(it) }
     }
 
     override fun onMethodCall(call: MethodCall, result: Result) {
@@ -40,6 +44,11 @@ class FlutterDaemonPlugin : FlutterPlugin, MethodCallHandler {
                 startDaemonService(context)
                 // 再 fork native daemon 子进程做周期性兜底拉起。
                 Daemon.run(context, interval)
+                // 保活链路已就绪（daemon 会冷启动拉回），此时才允许看门狗 kill 进程自愈。
+                // enable 可能在 Activity 已 resume 之后才被调用（如首页按钮触发），生命周期
+                // 回调不会再派发；onEnabled 会重挂注册期间记录下的当前 resumed Activity。
+                DrawWatchdog.enabled = true
+                DrawWatchdog.onEnabled()
                 Log.i(tag, "start daemon, interval=$interval")
                 result.success(true)
             }
