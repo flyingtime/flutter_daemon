@@ -16,6 +16,12 @@ void main() {
           return true;
         case 'isRunning':
           return false;
+        case 'enableBootAutoStart':
+          return true;
+        case 'disableBootAutoStart':
+          return true;
+        case 'isBootAutoStartEnabled':
+          return true;
         default:
           return null;
       }
@@ -33,5 +39,17 @@ void main() {
 
   test('isRunning returns false via method channel', () async {
     expect(await platform.isRunning(), isFalse);
+  });
+
+  test('enableBootAutoStart returns true via method channel', () async {
+    expect(await platform.enableBootAutoStart(), isTrue);
+  });
+
+  test('disableBootAutoStart returns true via method channel', () async {
+    expect(await platform.disableBootAutoStart(), isTrue);
+  });
+
+  test('isBootAutoStartEnabled returns true via method channel', () async {
+    expect(await platform.isBootAutoStartEnabled(), isTrue);
   });
 }

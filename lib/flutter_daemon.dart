@@ -30,4 +30,23 @@ class FlutterDaemon {
   static Future<bool> isRunning() {
     return FlutterDaemonPlatform.instance.isRunning();
   }
+
+  /// 开启开机自启：设备下次开机完成后自动恢复本应用。
+  ///
+  /// 仅在用户显式调用后生效（持久化到本地，跨重启有效）；再次调用
+  /// [disableBootAutoStart] 可关闭。注意部分定制 ROM 还要求在系统设置中
+  /// 给应用开"自启动"权限，插件无法代授。
+  static Future<bool> enableBootAutoStart() {
+    return FlutterDaemonPlatform.instance.enableBootAutoStart();
+  }
+
+  /// 关闭开机自启。
+  static Future<bool> disableBootAutoStart() {
+    return FlutterDaemonPlatform.instance.disableBootAutoStart();
+  }
+
+  /// 查询开机自启是否已开启。
+  static Future<bool> isBootAutoStartEnabled() {
+    return FlutterDaemonPlatform.instance.isBootAutoStartEnabled();
+  }
 }

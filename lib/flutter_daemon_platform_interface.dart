@@ -31,4 +31,22 @@ abstract class FlutterDaemonPlatform extends PlatformInterface {
   Future<bool> isRunning() {
     throw UnimplementedError('isRunning() has not been implemented.');
   }
+
+  /// 开启开机自启开关。
+  ///
+  /// 设备下次开机完成时，由插件内置的 `BOOT_COMPLETED` 接收器拉起保活
+  /// `:daemon` Service，进而恢复应用。需要用户显式调用（而非随保活自动开启）。
+  Future<bool> enableBootAutoStart() {
+    throw UnimplementedError('enableBootAutoStart() has not been implemented.');
+  }
+
+  /// 关闭开机自启开关。
+  Future<bool> disableBootAutoStart() {
+    throw UnimplementedError('disableBootAutoStart() has not been implemented.');
+  }
+
+  /// 查询开机自启开关状态。
+  Future<bool> isBootAutoStartEnabled() {
+    throw UnimplementedError('isBootAutoStartEnabled() has not been implemented.');
+  }
 }

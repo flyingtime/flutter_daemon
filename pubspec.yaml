@@ -1,6 +1,6 @@
 name: flutter_daemon
 description: "Android 进程保活插件，封装自 com.coolerfall.daemon。通过独立 daemon 子进程周期性拉起 Service 与应用，实现应用被杀后自恢复。"
-version: 0.0.1
+version: 0.0.2
 homepage:
 
 environment:

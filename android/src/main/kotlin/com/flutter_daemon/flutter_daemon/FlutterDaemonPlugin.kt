@@ -28,6 +28,19 @@ class FlutterDaemonPlugin : FlutterPlugin, MethodCallHandler {
         // :daemon 进程没有 Flutter engine，onAttachedToEngine 不会在那里执行。
         (flutterPluginBinding.applicationContext as? android.app.Application)
             ?.let { DrawWatchdog.register(it) }
+        // 保活链路已就绪时提前激活看门狗，覆盖开机自启与被杀后 daemon 拉回两条路径。
+        // 这两种场景的 Activity 都由 :daemon 进程 startActivity 拉起，正是白屏卡死
+        // （DrawWatchdog 注释所述首帧永不绘制）的高发路径；而卡死现场主线程消息队列
+        // 被滞留的同步屏障阻塞，Dart 侧 enable() 的 MethodChannel 消息永远不会被
+        // 派发执行——看门狗若只等 Dart enable() 激活，白屏将永久挂住（ZC-328E 实测
+        // 复现）。引擎挂载早于 Activity resume/卡死时机，此处保活进程已确认存活
+        // （开机自启时 :daemon Service 先于本进程拉起界面、拉回场景 daemon 必然
+        // 存活，二者都保证 kill 后有人冷启动拉回），可安全提前激活。
+        if (isDaemonRunning()) {
+            DrawWatchdog.enabled = true
+            DrawWatchdog.onEnabled()
+            Log.i(tag, "daemon chain alive at engine attach, watchdog pre-armed")
+        }
     }
 
     override fun onMethodCall(call: MethodCall, result: Result) {
@@ -54,6 +67,21 @@ class FlutterDaemonPlugin : FlutterPlugin, MethodCallHandler {
             }
             "isRunning" -> {
                 result.success(isDaemonRunning())
+            }
+            "enableBootAutoStart" -> {
+                BootAutoStart.setEnabled(context, true)
+                Log.i(tag, "boot auto start enabled")
+                result.success(true)
+            }
+            "disableBootAutoStart" -> {
+                BootAutoStart.setEnabled(context, false)
+                Log.i(tag, "boot auto start disabled")
+                // 返回 true 表示"操作成功执行"，与 enable 语义一致；
+                // 不要返回关闭后的状态(false)，否则 Dart 侧会误判为操作失败。
+                result.success(true)
+            }
+            "isBootAutoStartEnabled" -> {
+                result.success(BootAutoStart.isEnabled(context))
             }
             else -> result.notImplemented()
         }

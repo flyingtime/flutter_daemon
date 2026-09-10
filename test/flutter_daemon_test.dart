@@ -10,6 +10,9 @@ class MockFlutterDaemonPlatform
   bool enableCalled = false;
   int? lastInterval;
   bool isRunningCalled = false;
+  bool enableBootAutoStartCalled = false;
+  bool disableBootAutoStartCalled = false;
+  bool isBootAutoStartEnabledCalled = false;
 
   @override
   Future<bool> enable({int intervalSeconds = 3}) async {
@@ -22,6 +25,24 @@ class MockFlutterDaemonPlatform
   Future<bool> isRunning() async {
     isRunningCalled = true;
     return false;
+  }
+
+  @override
+  Future<bool> enableBootAutoStart() async {
+    enableBootAutoStartCalled = true;
+    return true;
+  }
+
+  @override
+  Future<bool> disableBootAutoStart() async {
+    disableBootAutoStartCalled = true;
+    return true;
+  }
+
+  @override
+  Future<bool> isBootAutoStartEnabled() async {
+    isBootAutoStartEnabledCalled = true;
+    return true;
   }
 }
 
@@ -49,5 +70,32 @@ void main() {
     final running = await FlutterDaemon.isRunning();
     expect(running, isFalse);
     expect(fake.isRunningCalled, isTrue);
+  });
+
+  test('enableBootAutoStart delegates to platform', () async {
+    final fake = MockFlutterDaemonPlatform();
+    FlutterDaemonPlatform.instance = fake;
+
+    final ok = await FlutterDaemon.enableBootAutoStart();
+    expect(ok, isTrue);
+    expect(fake.enableBootAutoStartCalled, isTrue);
+  });
+
+  test('disableBootAutoStart delegates to platform', () async {
+    final fake = MockFlutterDaemonPlatform();
+    FlutterDaemonPlatform.instance = fake;
+
+    final ok = await FlutterDaemon.disableBootAutoStart();
+    expect(ok, isTrue);
+    expect(fake.disableBootAutoStartCalled, isTrue);
+  });
+
+  test('isBootAutoStartEnabled delegates to platform', () async {
+    final fake = MockFlutterDaemonPlatform();
+    FlutterDaemonPlatform.instance = fake;
+
+    final enabled = await FlutterDaemon.isBootAutoStartEnabled();
+    expect(enabled, isTrue);
+    expect(fake.isBootAutoStartEnabledCalled, isTrue);
   });
 }

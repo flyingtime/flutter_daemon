@@ -4,6 +4,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <!-- Android 13+ 前台 Service 通知需 POST_NOTIFICATIONS 才能展示 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 开机自启：接收系统 BOOT_COMPLETED 广播。仅当 Dart 侧显式调用
+         enableBootAutoStart() 开启开关后，接收器才会实际拉起应用。 -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application>
         <!--
@@ -26,6 +29,22 @@
             android:name="com.flutter_daemon.flutter_daemon.receiver.DaemonReceiver"
             android:process=":daemon"
             android:exported="false" />
+
+        <!--
+          开机自启接收器,跑在主进程(需读取主进程 MethodChannel 侧写入的开关状态)。
+          系统开机完成(BOOT_COMPLETED / QUICKBOOT_POWERON)时拉起,仅当 Dart 侧
+          显式调用 enableBootAutoStart() 打开开关才实际启动 :daemon Service。
+          BOOT_COMPLETED 是系统受保护广播,android:exported 无实际影响;API 31+
+          要求显式声明 exported。
+        -->
+        <receiver
+            android:name="com.flutter_daemon.flutter_daemon.receiver.BootCompletedReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

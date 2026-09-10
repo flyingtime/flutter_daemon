@@ -23,4 +23,25 @@ class MethodChannelFlutterDaemon extends FlutterDaemonPlatform {
     final result = await methodChannel.invokeMethod<bool>('isRunning');
     return result ?? false;
   }
+
+  @override
+  Future<bool> enableBootAutoStart() async {
+    final result =
+        await methodChannel.invokeMethod<bool>('enableBootAutoStart');
+    return result ?? false;
+  }
+
+  @override
+  Future<bool> disableBootAutoStart() async {
+    final result =
+        await methodChannel.invokeMethod<bool>('disableBootAutoStart');
+    return result ?? false;
+  }
+
+  @override
+  Future<bool> isBootAutoStartEnabled() async {
+    final result =
+        await methodChannel.invokeMethod<bool>('isBootAutoStartEnabled');
+    return result ?? false;
+  }
 }
