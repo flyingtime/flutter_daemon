@@ -28,6 +28,9 @@ class FlutterDaemonPlugin : FlutterPlugin, MethodCallHandler {
         // :daemon 进程没有 Flutter engine，onAttachedToEngine 不会在那里执行。
         (flutterPluginBinding.applicationContext as? android.app.Application)
             ?.let { DrawWatchdog.register(it) }
+        // 跟踪当前引擎的 UI 渲染状态（阶段 2 判据：窗口画了白底但 Flutter 引擎
+        // 迟迟不渲染真首帧的 Android 11 白屏卡死模式）。
+        DrawWatchdog.onEngineAttached(flutterPluginBinding.flutterEngine.renderer)
         // 保活链路已就绪时提前激活看门狗，覆盖开机自启与被杀后 daemon 拉回两条路径。
         // 这两种场景的 Activity 都由 :daemon 进程 startActivity 拉起，正是白屏卡死
         // （DrawWatchdog 注释所述首帧永不绘制）的高发路径；而卡死现场主线程消息队列

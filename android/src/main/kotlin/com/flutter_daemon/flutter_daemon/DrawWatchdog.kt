@@ -8,21 +8,32 @@ import android.os.HandlerThread
 import android.util.Log
 import android.view.View
 import android.view.ViewTreeObserver
+import io.flutter.embedding.engine.renderer.FlutterRenderer
+import io.flutter.embedding.engine.renderer.FlutterUiDisplayListener
 
 /**
- * 首帧绘制看门狗：自愈「Activity resumed 但窗口永远画不出第一帧」的白屏卡死。
+ * 首帧绘制看门狗：自愈「Activity resumed 但窗口永远画不出内容」的白屏卡死。
  *
- * 现象（ZC-328E / Android 7.1.2 实测）：从后台 :daemon 进程 startActivity 拉回
- * LAUNCHER 时偶发主线程遍历卡死——Activity 显示 resumed、有输入焦点，但
- * ViewRootImpl 的 mTraversalScheduled 挂着一个永不执行的遍历（主线程消息队列
- * 被滞留的同步屏障阻塞），窗口 Surface 停在 DRAW_PENDING，屏幕上只剩系统的
- * Starting Window（白屏）。此时 AMS 侧一切「健康」，KeepAliveChecker 的
- * 进程/前台判据全部通过，保活巡检不会再拉起，白屏永久挂住。
+ * 白屏有两种失败模式，对应两阶段判定：
  *
- * 自愈机制：Activity resume 后在 decorView 上挂 OnPreDrawListener，若
- * [TIMEOUT_MS] 内没有任何一次绘制回调真正执行（正常冷启动首帧约 4s，阈值
- * 留了一倍余量），说明绘制管线卡死，直接 kill 主进程。保活链路（native daemon
- * 每 3~10s 巡检）会随即冷启动拉回——该路径实测可靠（冷启动恢复正常）。
+ * 阶段 1 —— 窗口首绘卡死（Android 7.1.2 ZC-328E 实测）：从后台 :daemon 进程
+ * startActivity 拉回 LAUNCHER 时偶发主线程遍历卡死——Activity 显示 resumed、
+ * 有输入焦点，但 ViewRootImpl 的 mTraversalScheduled 挂着一个永不执行的遍历
+ * （主线程消息队列被滞留的同步屏障阻塞），窗口 Surface 停在 DRAW_PENDING，
+ * 屏幕上只剩系统的 Starting Window（白屏）。此时 AMS 侧一切「健康」，
+ * KeepAliveChecker 的进程/前台判据全部通过，保活巡检不会再拉起，白屏永久挂住。
+ * 判据：resume 后 [FIRST_DRAW_TIMEOUT_MS] 内没有任何一次 onPreDraw 回调。
+ *
+ * 阶段 2 —— Flutter 引擎未渲染（Android 11 rk3566 实测推定）：窗口遍历正常
+ * 执行、画出了 LaunchTheme 的白色 windowBackground（onPreDraw 正常触发），但
+ * Flutter 引擎的真正首帧永远不渲染。此时看门狗若在 onPreDraw 即判定「健康」
+ * 退场，白屏将无人监管永久挂住。rk3566 实测正常冷启动 Flutter 首帧约 6~7s
+ * （Displayed +5s7~+7s），期间屏幕就是白屏——属正常慢启动，不能误判。
+ * 判据：onPreDraw 到达后 [FLUTTER_UI_TIMEOUT_MS] 内 Flutter 引擎仍未上报
+ * onFlutterUiDisplayed。
+ *
+ * 任一阶段超时即 kill 主进程，保活链路（native daemon 每 3~10s 巡检）随即
+ * 冷启动拉回——该路径实测可靠（冷启动恢复正常）。
  *
  * 实现细节：
  * - 监控消息发在独立 HandlerThread 上，不能用主线程 Handler：卡死现场主线程
@@ -32,14 +43,22 @@ import android.view.ViewTreeObserver
  *   永远停在 resumed，不受影响。
  * - resume 时主动对 decorView 调一次 invalidate() 制造绘制机会：兜住「无任何
  *   绘制需求」导致的静默。若 invalidate 后绘制回调仍不来，才是真的卡死。
+ * - 阶段 2 进入时若引擎已渲染过 UI（热启动回前台等场景），立即放行不误杀。
  * - [enabled] 默认 false，仅在主进程调用过 FlutterDaemon.enable()（保活已启动、
  *   有 daemon 兜底可拉回）后才生效；否则 kill 进程后无人恢复。
  */
 internal object DrawWatchdog {
     private const val TAG = "DrawWatchdog"
 
-    /** 首帧超时阈值。正常冷启动到首帧 ~4s（ZC-328E 实测 Displayed +4s6ms），取 2 倍余量。 */
-    private const val TIMEOUT_MS = 10_000L
+    /** 阶段 1 超时阈值：窗口首绘。正常冷启动到首绘 <1s，取宽裕倍数。 */
+    private const val FIRST_DRAW_TIMEOUT_MS = 10_000L
+
+    /**
+     * 阶段 2 超时阈值：Flutter 引擎真首帧。rk3566 (Android 11) 实测正常冷启动
+     * Flutter 首帧 5.7~7s（Displayed +5s7~+7s），ZC-328E (Android 7) 实测 ~4s，
+     * 取 15s（约 2 倍余量）——兼顾「慢启动不误杀」与「真卡死尽快自愈」。
+     */
+    private const val FLUTTER_UI_TIMEOUT_MS = 15_000L
 
     /**
      * 看门狗是否生效。由插件在 enable()（启动保活）时置 true——保证 kill 进程后
@@ -62,9 +81,35 @@ internal object DrawWatchdog {
     private var resumedActivity: Activity? = null
 
     /**
-     * 注册生命周期回调，开始监控。在插件 onAttachedToEngine（主进程）时调用一次；
-     * :daemon 进程没有 Flutter engine，天然不会走到这里。
+     * 当前 Flutter 引擎是否已渲染出 UI（阶段 2 的放行判据）。
+     * 由 [onEngineAttached] 按引擎生命周期维护：新引擎冷启动为 false，
+     * 热启动复用引擎则继承 true。
      */
+    @Volatile
+    private var flutterUiDisplayed = false
+
+    /**
+     * 插件 onAttachedToEngine 时调用：跟踪当前引擎的 UI 渲染状态。
+     * 每次 attach 对应一个引擎实例（默认 FlutterActivity 每次冷启动新建引擎），
+     * 直接以引擎当前的渲染状态初始化，不与上一个引擎的状态串扰。
+     */
+    fun onEngineAttached(renderer: FlutterRenderer) {
+        flutterUiDisplayed = renderer.isDisplayingFlutterUi
+        renderer.addIsDisplayingFlutterUiListener(object : FlutterUiDisplayListener {
+            override fun onFlutterUiDisplayed() {
+                flutterUiDisplayed = true
+                synchronized(DrawWatchdog) { pending?.onFlutterUiDisplayed() }
+            }
+
+            override fun onFlutterUiNoLongerDisplayed() {
+                // 引擎 UI 消失（如 Activity 销毁）不回退判据：引擎销毁后整体
+                // 会随新引擎 attach 重新初始化，中途回退反而制造误杀窗口。
+            }
+        })
+    }
+
+    /** 注册生命周期回调，开始监控。在插件 onAttachedToEngine（主进程）时调用一次；
+     * :daemon 进程没有 Flutter engine，天然不会走到这里。 */
     fun register(application: Application) {
         application.registerActivityLifecycleCallbacks(LifecycleWatcher)
     }
@@ -124,8 +169,8 @@ internal object DrawWatchdog {
         // 主动制造一次绘制需求：兜住「无任何绘制需求」的静默 resume。
         // 若管线健康，invalidate 会引来 onPreDraw 并解除监控；若卡死，超时杀进程。
         decor.post { decor.invalidate() }
-        watchdogHandler.postDelayed(listener, TIMEOUT_MS)
-        Log.d(TAG, "armed for ${activity.localClassName}")
+        watchdogHandler.postDelayed(listener, FIRST_DRAW_TIMEOUT_MS)
+        Log.d(TAG, "armed (phase 1) for ${activity.localClassName}")
     }
 
     /** 仅当当前监控的正是 [activity] 时解除（销毁/暂停别的 Activity 不影响它）。 */
@@ -147,29 +192,53 @@ internal object DrawWatchdog {
     }
 
     /**
-     * 首帧判定回调：既是 OnPreDrawListener（绘制到达即解除），也是
+     * 两阶段首帧判定回调：既是 OnPreDrawListener（阶段 1 判据），也是
      * 超时任务（postDelayed 到点执行即判定卡死、杀进程）。
      */
     private class WatchdogDrawListener(val activity: Activity, val decor: View) :
         ViewTreeObserver.OnPreDrawListener, Runnable {
 
+        /** 当前所处阶段：1=等窗口首绘，2=等 Flutter 引擎真首帧。 */
+        @Volatile
+        private var phase = 1
+
         /** 已确认绘制完成/已解除，Runnable 不再生效。 */
         @Volatile
         private var settled = false
 
-        /** 绘制遍历发生：管线存活，解除监控。返回 true 放行本次绘制。 */
+        /** 窗口绘制遍历发生：阶段 1 通过。返回 true 放行本次绘制。 */
         override fun onPreDraw(): Boolean {
-            settle()
+            if (settled || phase != 1) return true
+            watchdogHandler.removeCallbacks(this)
+            phase = 2
+            if (DrawWatchdog.flutterUiDisplayed) {
+                // 引擎早已渲染过 UI（热启动回前台等）：白屏无从谈起，直接放行。
+                settle()
+                return true
+            }
+            // 阶段 2：窗口画了（可能只是白色启动背景），继续等 Flutter 真首帧。
+            watchdogHandler.postDelayed(this, FLUTTER_UI_TIMEOUT_MS)
+            Log.d(TAG, "phase 2 armed: window drawn, waiting for flutter ui (${activity.localClassName})")
             return true
         }
 
-        /** 超时仍未绘制：判定为绘制管线卡死，杀进程交给 daemon 冷启动恢复。 */
+        /** Flutter 引擎真首帧到达：阶段 2 通过，解除监控。 */
+        fun onFlutterUiDisplayed() {
+            if (!settled && phase == 2) {
+                settle()
+            }
+        }
+
+        /** 超时仍未通过当前阶段：判定为白屏卡死，杀进程交给 daemon 冷启动恢复。 */
         override fun run() {
             if (!settled && pending === this) {
                 Log.e(
                     TAG,
-                    "no first frame within ${TIMEOUT_MS}ms after resume, " +
-                        "drawing pipeline is stuck; kill main process for daemon revive"
+                    (if (phase == 1) {
+                        "no window first draw within ${FIRST_DRAW_TIMEOUT_MS}ms after resume"
+                    } else {
+                        "window drawn but flutter ui not displayed within ${FLUTTER_UI_TIMEOUT_MS}ms"
+                    }) + "; drawing pipeline is stuck, kill main process for daemon revive"
                 )
                 // 置位防并发重复 kill；进程消亡后其余状态无需清理。
                 settled = true
@@ -183,7 +252,7 @@ internal object DrawWatchdog {
                 if (pending === this) {
                     watchdogHandler.removeCallbacks(this)
                     pending = null
-                    Log.d(TAG, "first frame observed, watchdog settled")
+                    Log.d(TAG, "flutter ui displayed, watchdog settled")
                 }
             }
         }
