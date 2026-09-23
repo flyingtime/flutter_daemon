@@ -31,6 +31,15 @@ await FlutterDaemon.disableBootAutoStart();   // 关闭
 
 注意：部分定制 ROM（MIUI / EMUI 等）还要求用户在系统设置里给应用开"自启动"权限，插件无法代授；RECEIVE_BOOT_COMPLETED 权限已由插件 manifest 声明，宿主无需重复声明。
 
+### 覆盖安装后自启动
+
+插件内置 `MY_PACKAGE_REPLACED` 广播接收器：应用被**覆盖安装**（设备上已有旧版本，`adb install -r xx.apk` 或应用商店更新）后，系统发送该广播，插件随即拉起 `:daemon` 保活 Service，由 Service 检测主进程不在后恢复应用界面。
+
+- **无条件生效**：不需要 Dart 侧调用任何 API，也不受开机自启开关影响，覆盖安装完成即尝试自动启动。
+- **无需权限**：`MY_PACKAGE_REPLACED` 为系统受保护广播，宿主无需声明任何权限。
+- **仅覆盖安装有效**：**全新安装**（首次装到无本应用的设备）系统不会向本包发送可用广播，无法自启动；这是 Android 平台限制，普通 App 无法绕过（除非有系统签名 / 预置到 system 分区）。
+- 启动链路为先拉起前台 Service 再拉起界面，以尽量规避 Android 10+ 的后台启动 Activity（BAL）限制；但该限制在部分 ROM 上仍可能拦截，需实机验证。
+
 ### isRunning 的判定
 
 `isRunning()` 返回 native daemon 子进程 **或** 其托管的 `DaemonService`（独立 `:daemon` 进程）任一是否存活。app 被杀后由 daemon 自动拉起时，两者往往交替存活（daemon 可能短暂缺位而 `:daemon` Service 仍在跑），任一存活即视为保活已生效，避免把“已自动恢复”误报成“未启动”。
@@ -55,7 +64,7 @@ Future<void> initializeKeepAlive() async {
 
 ## 宿主接入
 
-插件的 `AndroidManifest.xml` 已声明 `DaemonService`（独立 `:daemon` 进程）与开机自启接收器（`BootCompletedReceiver`），会通过 manifest merger 自动合并进宿主 APK，**宿主无需手动声明 Service 或权限**。
+插件的 `AndroidManifest.xml` 已声明 `DaemonService`（独立 `:daemon` 进程）、开机自启接收器（`BootCompletedReceiver`）与覆盖安装自启动接收器（`PackageReplacedReceiver`），会通过 manifest merger 自动合并进宿主 APK，**宿主无需手动声明 Service 或权限**。
 
 ## ABI 支持
 

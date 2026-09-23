@@ -45,6 +45,21 @@
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
+
+        <!--
+          覆盖安装(更新)后自启动接收器,跑在主进程。应用被覆盖安装时系统发送
+          MY_PACKAGE_REPLACED 广播,收到后拉起 :daemon 保活 Service,由 Service
+          检测主进程不在后拉起应用界面。无条件启动(不看任何开关)。
+          MY_PACKAGE_REPLACED 是系统受保护广播,android:exported 无实际影响;
+          API 31+ 要求显式声明 exported。
+        -->
+        <receiver
+            android:name="com.flutter_daemon.flutter_daemon.receiver.PackageReplacedReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>
